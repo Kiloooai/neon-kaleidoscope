@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Kaleidoscope</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #000;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+            color: #0ff;
+            text-shadow: 0 0 5px #0ff;
+            cursor: crosshair;
+        }
+        canvas { display: block; }
+        .controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid rgba(0,255,255,0.3);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            user-select: none;
+            width: 220px;
+        }
+        .controls h2 {
+            margin-bottom: 12px;
+            font-size: 16px;
+            color: #f0f;
+            text-shadow: 0 0 10px #f0f;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        .control-group label {
+            display: block;
+            font-size: 10px;
+            color: #ff0;
+            margin-bottom: 4px;
+        }
+        input[type="range"] {
+            width: 100%;
+            accent-color: #0ff;
+        }
+        .value-display {
+            float: right;
+            color: #fff;
+            font-weight: bold;
+            font-size: 11px;
+        }
+        .buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        button {
+            flex: 1;
+            padding: 8px;
+            background: transparent;
+            border: 1px solid #0ff;
+            color: #0ff;
+            border-radius: 5px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: rgba(0,255,255,0.1);
+            box-shadow: 0 0 10px rgba(0,255,255,0.3);
+        }
+        .stats {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #0f0;
+            text-shadow: 0 0 8px #0f0;
+            font-size: 12px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid rgba(0,255,0,0.3);
+        }
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #888;
+            font-size: 12px;
+            text-align: center;
+            max-width: 500px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <h2>🌈 NEON KALEIDOSCOPE</h2>
+
+        <div class="control-group">
+            <label>Symmetry <span class="value-display" id="symVal">8</span></label>
+            <input type="range" id="symmetry" min="2" max="24" value="8">
+        </div>
+
+        <div class="control-group">
+            <label>Max Particles <span class="value-display" id="maxVal">300</span></label>
+            <input type="range" id="maxParticles" min="50" max="800" value="300">
+        </div>
+
+        <div class="control-group">
+            <label>Emission Rate <span class="value-display" id="emitVal">3</span></label>
+            <input type="range" id="emission" min="1" max="15" value="3">
+        </div>
+
+        <div class="control-group">
+            <label>Speed <span class="value-display" id="speedVal">1.0</span></label>
+            <input type="range" id="speed" min="0.2" max="4" step="0.1" value="1">
+        </div>
+
+        <div class="control-group">
+            <label>Size <span class="value-display" id="sizeVal">3</span></label>
+            <input type="range" id="size" min="1" max="8" value="3">
+        </div>
+
+        <div class="control-group">
+            <label>Trail Fade <span class="value-display" id="fadeVal">0.05</span></label>
+            <input type="range" id="fade" min="0.01" max="0.3" step="0.01" value="0.05">
+        </div>
+
+        <div class="control-group">
+            <label>Color Cycle <span class="value-display" id="colorSpeedVal">0.5</span></label>
+            <input type="range" id="colorSpeed" min="0" max="2" step="0.1" value="0.5">
+        </div>
+
+        <div class="buttons">
+            <button id="pauseBtn">Pause</button>
+            <button id="randomBtn">Randomize</button>
+        </div>
+    </div>
+
+    <div class="stats">
+        <div>Particles: <span id="particleNum">0</span></div>
+        <div>FPS: <span id="fps">60</span></div>
+    </div>
+
+    <div class="instructions">
+        Radial symmetry turns particle streams into mandala patterns. Click to burst particles. Adjust symmetry count, speed, size, fade, color. Hypnotic.
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Controls
+        const symSlider = document.getElementById('symmetry');
+        const maxSlider = document.getElementById('maxParticles');
+        const emitSlider = document.getElementById('emission');
+        const speedSlider = document.getElementById('speed');
+        const sizeSlider = document.getElementById('size');
+        const fadeSlider = document.getElementById('fade');
+        const colorSpeedSlider = document.getElementById('colorSpeed');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const randomBtn = document.getElementById('randomBtn');
+
+        let width, height;
+        let particles = [];
+        let running = true;
+        let lastTime = 0;
+        let frameCount = 0;
+        let lastFpsTime = 0;
+        let hueCycle = 0;
+        let angleOffset = 0; // global rotation of symmetry axes
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+
+            reset() {
+                // Spawn near center, random direction
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 10 + Math.random() * 30;
+                this.x = width/2 + Math.cos(angle) * dist;
+                this.y = height/2 + Math.sin(angle) * dist;
+                const speed = 1 + Math.random() * 2;
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                this.life = 200 + Math.random() * 300;
+                this.age = 0;
+                this.hue = Math.random() * 360;
+                this.size = parseFloat(sizeSlider.value) * (0.7 + Math.random()*0.6);
+            }
+
+            update(speedMult) {
+                this.x += this.vx * speedMult;
+                this.y += this.vy * speedMult;
+                this.age++;
+            }
+
+            isDead() {
+                return this.age > this.life || this.x < -100 || this.x > width+100 || this.y < -100 || this.y > height+100;
+            }
+
+            draw(ctx, symmetry, globalHue) {
+                const cx = width/2;
+                const cy = height/2;
+                const baseAngle = 2 * Math.PI / symmetry;
+
+                // Draw particle in each symmetry segment
+                for (let i = 0; i < symmetry; i++) {
+                    const theta = i * baseAngle + angleOffset;
+                    const cosT = Math.cos(theta);
+                    const sinT = Math.sin(theta);
+
+                    // Rotate position relative to center
+                    const dx = this.x - cx;
+                    const dy = this.y - cy;
+                    const rx = dx * cosT - dy * sinT;
+                    const ry = dx * sinT + dy * cosT;
+
+                    const px = cx + rx;
+                    const py = cy + ry;
+
+                    const hue = (this.hue + globalHue) % 360;
+                    ctx.beginPath();
+                    ctx.arc(px, py, this.size, 0, Math.PI*2);
+                    ctx.fillStyle = `hsl(${hue}, 100%, 60%)`;
+                    ctx.shadowBlur = 8;
+                    ctx.shadowColor = ctx.fillStyle;
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            }
+        }
+
+        function adjustParticleCount(target) {
+            const current = particles.length;
+            if (target > current) {
+                for (let i = 0; i < target - current; i++) {
+                    particles.push(new Particle());
+                }
+            } else if (target < current) {
+                particles.splice(target);
+            }
+        }
+
+        function animate(timestamp) {
+            const delta = timestamp - lastTime || 16;
+            lastTime = timestamp;
+
+            frameCount++;
+            if (timestamp - lastFpsTime >= 1000) {
+                document.getElementById('fps').textContent = frameCount;
+                frameCount = 0;
+                lastFpsTime = timestamp;
+            }
+
+            if (running) {
+                // Fade background
+                const fade = parseFloat(fadeSlider.value);
+                ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
+                ctx.fillRect(0, 0, width, height);
+
+                const speed = parseFloat(speedSlider.value);
+                const symmetry = parseInt(symSlider.value);
+                const emission = parseInt(emitSlider.value);
+                const globalHue = hueCycle;
+
+                // Emit new particles
+                for (let i = 0; i < emission; i++) {
+                    if (particles.length < parseInt(maxSlider.value)) {
+                        particles.push(new Particle());
+                    }
+                }
+
+                // Update and draw
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.update(speed);
+                    p.draw(ctx, symmetry, globalHue);
+                    if (p.isDead()) {
+                        particles.splice(i, 1);
+                    }
+                }
+
+                // Slowly rotate symmetry axes
+                angleOffset += 0.002 * speed;
+
+                // Update hue cycle
+                hueCycle = (hueCycle + parseFloat(colorSpeedSlider.value) * delta * 0.01) % 360;
+
+                document.getElementById('particleNum').textContent = particles.length;
+            }
+
+            requestAnimationFrame(animate);
+        }
+
+        // Interactions
+        canvas.addEventListener('click', (e) => {
+            // Burst of particles at click
+            const burst = 20;
+            for (let i = 0; i < burst; i++) {
+                if (particles.length < parseInt(maxSlider.value) + burst) {
+                    const p = new Particle();
+                    p.x = e.clientX;
+                    p.y = e.clientY;
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 1 + Math.random() * 2;
+                    p.vx = Math.cos(angle) * speed;
+                    p.vy = Math.sin(angle) * speed;
+                    particles.push(p);
+                }
+            }
+        });
+
+        function updateDisplays() {
+            document.getElementById('symVal').textContent = symSlider.value;
+            document.getElementById('maxVal').textContent = maxSlider.value;
+            document.getElementById('emitVal').textContent = emitSlider.value;
+            document.getElementById('speedVal').textContent = speedSlider.value;
+            document.getElementById('sizeVal').textContent = sizeSlider.value;
+            document.getElementById('fadeVal').textContent = fadeSlider.value;
+            document.getElementById('colorSpeedVal').textContent = colorSpeedSlider.value;
+        }
+
+        const sliders = [symSlider, maxSlider, emitSlider, speedSlider, sizeSlider, fadeSlider, colorSpeedSlider];
+        sliders.forEach(s => s.addEventListener('input', () => {
+            updateDisplays();
+            if (s === maxSlider) adjustParticleCount(parseInt(s.value));
+        }));
+
+        pauseBtn.addEventListener('click', () => {
+            running = !running;
+            pauseBtn.textContent = running ? "Pause" : "Resume";
+            if (running) animate(0);
+        });
+
+        randomBtn.addEventListener('click', () => {
+            symSlider.value = Math.floor(2 + Math.random() * 22);
+            maxSlider.value = Math.floor(50 + Math.random() * 750);
+            emitSlider.value = Math.floor(1 + Math.random() * 14);
+            speedSlider.value = (0.2 + Math.random() * 3.8).toFixed(1);
+            sizeSlider.value = Math.floor(1 + Math.random() * 7);
+            fadeSlider.value = (0.01 + Math.random() * 0.29).toFixed(2);
+            colorSpeedSlider.value = (Math.random() * 2).toFixed(1);
+            updateDisplays();
+            adjustParticleCount(parseInt(maxSlider.value));
+        });
+
+        updateDisplays();
+        animate(0);
+    </script>
+</body>
+</html>
